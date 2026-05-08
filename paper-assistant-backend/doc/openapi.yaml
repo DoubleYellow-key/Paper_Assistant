@@ -1,0 +1,673 @@
+openapi: 3.0.3
+info:
+  title: 论文阅读助手后端 API
+  version: "0.1.0"
+  description: |
+    基于当前后端实现生成的 OpenAPI 文档（联调版）。
+    统一响应结构：code/message/data/trace_id。
+servers:
+  - url: http://localhost:8080
+    description: local
+tags:
+  - name: Auth
+  - name: Papers
+  - name: AI
+
+paths:
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: 用户注册
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvelopeRegisterSuccess"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: 用户登录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvelopeLoginSuccess"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: 获取当前用户
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvelopeMeSuccess"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/papers/upload:
+    post:
+      tags: [Papers]
+      summary: 上传论文
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                title:
+                  type: string
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvelopeUploadSuccess"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/papers:
+    get:
+      tags: [Papers]
+      summary: 获取论文列表
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvelopePaperListSuccess"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/papers/{id}:
+    get:
+      tags: [Papers]
+      summary: 获取论文详情
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PaperID"
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvelopePaperDetailSuccess"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/papers/{id}/parse-jobs/latest:
+    get:
+      tags: [Papers]
+      summary: 获取最新解析任务状态
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PaperID"
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvelopeParseJobSuccess"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/papers/{id}/qa:
+    post:
+      tags: [AI]
+      summary: 论文问答（Eino）
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PaperID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AskRequest"
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvelopeAskSuccess"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ModelBadGateway"
+        "503":
+          $ref: "#/components/responses/ModelUnavailable"
+
+  /api/v1/papers/{id}/summary:
+    post:
+      tags: [AI]
+      summary: 论文摘要（Eino）
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PaperID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AskRequest"
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvelopeAskSuccess"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ModelBadGateway"
+        "503":
+          $ref: "#/components/responses/ModelUnavailable"
+
+  /api/v1/papers/{id}/term-explain:
+    post:
+      tags: [AI]
+      summary: 术语解释（Eino）
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PaperID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AskRequest"
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvelopeAskSuccess"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "502":
+          $ref: "#/components/responses/ModelBadGateway"
+        "503":
+          $ref: "#/components/responses/ModelUnavailable"
+
+  /api/v1/papers/compare:
+    post:
+      tags: [AI]
+      summary: 多论文对比（当前占位）
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvelopeCompareTodo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "uid-<id>"
+
+  parameters:
+    PaperID:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+  responses:
+    BadRequest:
+      description: 参数错误
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EnvelopeError"
+          example:
+            code: 40001
+            message: invalid request body
+            trace_id: a1b2c3d4e5f6
+    Unauthorized:
+      description: 未授权
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EnvelopeError"
+          example:
+            code: 40101
+            message: unauthorized
+            trace_id: a1b2c3d4e5f6
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EnvelopeError"
+          example:
+            code: 40401
+            message: paper not found
+            trace_id: a1b2c3d4e5f6
+    Conflict:
+      description: 冲突
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EnvelopeError"
+          example:
+            code: 40901
+            message: email already exists
+            trace_id: a1b2c3d4e5f6
+    ModelBadGateway:
+      description: 模型调用失败
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EnvelopeError"
+          example:
+            code: 50021
+            message: eino generate failed
+            trace_id: a1b2c3d4e5f6
+    ModelUnavailable:
+      description: 模型服务不可用
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EnvelopeError"
+          example:
+            code: 50021
+            message: missing llm api key
+            trace_id: a1b2c3d4e5f6
+
+  schemas:
+    EnvelopeError:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        trace_id:
+          type: string
+      required: [code, message, trace_id]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          example: user
+        created_at:
+          type: string
+          format: date-time
+      required: [id, username, email, role, created_at]
+
+    Paper:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        file_name:
+          type: string
+        file_path:
+          type: string
+        file_size:
+          type: integer
+          format: int64
+        parse_status:
+          type: string
+          enum: [pending, processing, done, failed]
+        parse_error:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, user_id, title, file_name, file_path, file_size, parse_status, created_at, updated_at]
+
+    ParseJob:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        paper_id:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [queued, running, success, failed]
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        retry_count:
+          type: integer
+        max_retries:
+          type: integer
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        error_message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, paper_id, status, progress, retry_count, max_retries, created_at, updated_at]
+
+    AskRequest:
+      type: object
+      properties:
+        query:
+          type: string
+      required: [query]
+
+    AskResponse:
+      type: object
+      properties:
+        answer:
+          type: string
+        citations:
+          type: array
+          items:
+            type: string
+        confidence:
+          type: string
+      required: [answer]
+
+    RegisterRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 32
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+          maxLength: 64
+      required: [username, email, password]
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+          maxLength: 64
+      required: [email, password]
+
+    EnvelopeRegisterSuccess:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          type: object
+          properties:
+            user:
+              $ref: "#/components/schemas/User"
+          required: [user]
+        trace_id:
+          type: string
+      required: [code, message, data, trace_id]
+
+    EnvelopeLoginSuccess:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          type: object
+          properties:
+            token:
+              type: string
+              example: uid-1
+            user:
+              $ref: "#/components/schemas/User"
+          required: [token, user]
+        trace_id:
+          type: string
+      required: [code, message, data, trace_id]
+
+    EnvelopeMeSuccess:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          type: object
+          properties:
+            user:
+              $ref: "#/components/schemas/User"
+          required: [user]
+        trace_id:
+          type: string
+      required: [code, message, data, trace_id]
+
+    EnvelopeUploadSuccess:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          type: object
+          properties:
+            paper:
+              $ref: "#/components/schemas/Paper"
+            parse_job:
+              $ref: "#/components/schemas/ParseJob"
+          required: [paper, parse_job]
+        trace_id:
+          type: string
+      required: [code, message, data, trace_id]
+
+    EnvelopePaperListSuccess:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/Paper"
+          required: [items]
+        trace_id:
+          type: string
+      required: [code, message, data, trace_id]
+
+    EnvelopePaperDetailSuccess:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          type: object
+          properties:
+            paper:
+              $ref: "#/components/schemas/Paper"
+          required: [paper]
+        trace_id:
+          type: string
+      required: [code, message, data, trace_id]
+
+    EnvelopeParseJobSuccess:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          type: object
+          properties:
+            parse_job:
+              $ref: "#/components/schemas/ParseJob"
+          required: [parse_job]
+        trace_id:
+          type: string
+      required: [code, message, data, trace_id]
+
+    EnvelopeAskSuccess:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          $ref: "#/components/schemas/AskResponse"
+        trace_id:
+          type: string
+      required: [code, message, data, trace_id]
+
+    EnvelopeCompareTodo:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 0
+        message:
+          type: string
+          example: ok
+        data:
+          type: object
+          properties:
+            message:
+              type: string
+              example: TODO: compare endpoint
+        trace_id:
+          type: string
+      required: [code, message, data, trace_id]
