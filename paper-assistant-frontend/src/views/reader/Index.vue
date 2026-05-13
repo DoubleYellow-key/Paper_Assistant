@@ -25,9 +25,10 @@ const fetchPaperInfo = async () => {
     const res: any = await getPaperDetail(paperId)
     paperInfo.value = res.paper
     parseStatus.value = res.paper.parse_status
-    if (parseStatus.value === 'pending' || parseStatus.value === 'queued') {
+    if (parseStatus.value === 'pending' || parseStatus.value === 'queued' || parseStatus.value === 'running') {
       startPolling()
-    } else if (parseStatus.value === 'completed') {
+    } else if (parseStatus.value === 'done' || parseStatus.value === 'success' || parseStatus.value === 'completed') {
+      parseStatus.value = 'success'
       if (chatList.value.length === 0) {
         generateSummary()
       }
@@ -46,19 +47,25 @@ const startPolling = () => {
       const res: any = await getParseJobLatest(paperId)
       if (res.parse_job) {
         parseProgress.value = res.parse_job.progress
-        if (res.parse_job.status === 'completed') {
-          parseStatus.value = 'completed'
+        // 判断 parse_job.status
+        if (res.parse_job.status === 'success' || res.parse_job.status === 'done' || res.parse_job.status === 'completed') {
+          parseStatus.value = 'success'
           stopPolling()
           ElMessage.success('论文解析完成')
           generateSummary()
         } else if (res.parse_job.status === 'failed') {
           parseStatus.value = 'failed'
           stopPolling()
-          ElMessage.error('论文解析失败')
+          ElMessage.error(res.parse_job.error_msg || '论文解析失败')
+        } else if (res.parse_job.status === 'running') {
+          parseStatus.value = 'running'
+        } else if (res.parse_job.status === 'queued' || res.parse_job.status === 'pending') {
+          parseStatus.value = 'queued'
         }
       }
     } catch (error) {
-      stopPolling()
+      // 保持轮询，不因为单次网络错误就停止
+      console.error('轮询解析状态失败', error)
     }
   }, 3000)
 }
@@ -76,9 +83,14 @@ const generateSummary = async () => {
     const res: any = await getSummary(paperId)
     chatList.value.pop()
     chatList.value.push({ role: 'assistant', content: res.answer })
-  } catch (error) {
+  } catch (error: any) {
     chatList.value.pop()
-    chatList.value.push({ role: 'assistant', content: '总结生成失败，请重试。' })
+    const errData = error.response?.data || error
+    if (errData.code === 40901 || errData.message?.includes('40901')) {
+      chatList.value.push({ role: 'assistant', content: '解析中，请稍后...' })
+    } else {
+      chatList.value.push({ role: 'assistant', content: '总结生成失败，请重试。' })
+    }
   }
 }
 
@@ -93,9 +105,14 @@ const handleAsk = async () => {
     const res: any = await askQuestion(paperId, query)
     chatList.value.pop()
     chatList.value.push({ role: 'assistant', content: res.answer })
-  } catch (error) {
+  } catch (error: any) {
     chatList.value.pop()
-    chatList.value.push({ role: 'assistant', content: '回答生成失败，请检查模型服务是否正常。' })
+    const errData = error.response?.data || error
+    if (errData.code === 40901 || errData.message?.includes('40901')) {
+      chatList.value.push({ role: 'assistant', content: '解析中，请稍后...' })
+    } else {
+      chatList.value.push({ role: 'assistant', content: '回答生成失败，请检查模型服务是否正常。' })
+    }
   } finally {
     asking.value = false
   }
@@ -120,17 +137,18 @@ onUnmounted(() => {
           <span>{{ paperInfo?.title || '加载中...' }}</span>
         </div>
         <div>
-          <el-tag v-if="parseStatus === 'completed'" type="success">解析完成</el-tag>
+          <el-tag v-if="parseStatus === 'success' || parseStatus === 'done' || parseStatus === 'completed'" type="success">解析完成</el-tag>
           <el-tag v-else-if="parseStatus === 'failed'" type="danger">解析失败</el-tag>
+          <el-tag v-else-if="parseStatus === 'queued' || parseStatus === 'pending'" type="info">排队中</el-tag>
           <div v-else class="flex items-center gap-2">
-            <el-tag type="warning">正在解析</el-tag>
+            <el-tag type="warning">解析中</el-tag>
             <el-progress :percentage="parseProgress" :show-text="false" style="width: 100px" />
           </div>
         </div>
       </div>
       <div class="flex-1 p-4 relative overflow-hidden bg-gray-100 flex items-center justify-center">
         <!-- 此处为PDF渲染占位，可用 iframe 或 pdf.js -->
-        <iframe v-if="paperInfo?.file_path" :src="'/api/v1' + paperInfo.file_path" class="w-full h-full border-none"></iframe>
+        <iframe v-if="paperInfo?.file_path" :src="paperInfo.file_path" class="w-full h-full border-none"></iframe>
         <div v-else class="text-gray-400 flex flex-col items-center">
           <el-icon :size="48" class="mb-2"><Document /></el-icon>
           <p>暂无 PDF 预览</p>
@@ -167,10 +185,10 @@ onUnmounted(() => {
           placeholder="向助手提问关于这篇论文的内容... (按 Enter 发送)"
           resize="none"
           @keydown.enter.prevent="handleAsk"
-          :disabled="parseStatus !== 'completed' || asking"
+          :disabled="parseStatus !== 'success' && parseStatus !== 'done' && parseStatus !== 'completed' || asking"
         />
         <div class="mt-3 flex justify-end">
-          <el-button type="primary" :loading="asking" :disabled="parseStatus !== 'completed' || !inputQuery.trim()" @click="handleAsk">
+          <el-button type="primary" :loading="asking" :disabled="parseStatus !== 'success' && parseStatus !== 'done' && parseStatus !== 'completed' || !inputQuery.trim()" @click="handleAsk">
             发送
           </el-button>
         </div>

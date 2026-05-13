@@ -2,8 +2,13 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"time"
 
 	"paper-assistant-backend/internal/agent"
 	"paper-assistant-backend/internal/api/middleware"
@@ -38,12 +43,28 @@ func (h *PaperHandler) Upload(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, apperrors.CodeBadRequest, "file is required")
 		return
 	}
+
+	if err := os.MkdirAll("uploads", 0o755); err != nil {
+		response.Fail(c, http.StatusInternalServerError, apperrors.CodeInternal, "create uploads dir failed")
+		return
+	}
+
+	originName := filepath.Base(file.Filename)
+	storedName := fmt.Sprintf("%d_%d_%s", userID, time.Now().UnixNano(), originName)
+	localFilePath := filepath.Join("uploads", storedName)
+	if err := c.SaveUploadedFile(file, localFilePath); err != nil {
+		response.Fail(c, http.StatusInternalServerError, apperrors.CodeInternal, "save file failed")
+		return
+	}
+
 	title := c.PostForm("title")
 	paper, job := h.paperService.Upload(service.UploadPaperInput{
-		UserID:   userID,
-		Title:    title,
-		FileName: file.Filename,
-		FileSize: file.Size,
+		UserID:      userID,
+		Title:       title,
+		FileName:    originName,
+		FilePath:    "/api/v1/uploads/" + storedName,
+		StoragePath: localFilePath,
+		FileSize:    file.Size,
 	})
 	response.OK(c, gin.H{
 		"paper":     paper,
@@ -123,10 +144,25 @@ func (h *PaperHandler) askByPrompt(c *gin.Context, instruction string) {
 		response.Fail(c, http.StatusServiceUnavailable, apperrors.CodeModelFailed, "agent service unavailable")
 		return
 	}
+	userID, ok := middleware.MustUserID(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "unauthorized")
+		return
+	}
 
 	paperID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || paperID == 0 {
 		response.Fail(c, http.StatusBadRequest, apperrors.CodeBadRequest, "invalid id")
+		return
+	}
+
+	paper, err := h.paperService.GetByID(userID, paperID)
+	if err != nil {
+		response.Fail(c, http.StatusNotFound, apperrors.CodeNotFound, "paper not found")
+		return
+	}
+	if paper.ParseStatus != "done" {
+		response.Fail(c, http.StatusConflict, apperrors.CodeStateConflict, "paper parsing is not completed")
 		return
 	}
 
@@ -136,9 +172,15 @@ func (h *PaperHandler) askByPrompt(c *gin.Context, instruction string) {
 		return
 	}
 
+	parsedText, err := h.paperService.GetParsedText(userID, paperID)
+	if err != nil {
+		response.Fail(c, http.StatusConflict, apperrors.CodeStateConflict, "paper parsing is not completed")
+		return
+	}
+
 	resp, err := h.agentService.Ask(c.Request.Context(), agent.AskRequest{
 		PaperID: paperID,
-		Query:   instruction + "\n" + req.Query,
+		Query:   buildModelQuery(instruction, req.Query, parsedText),
 	})
 	if err != nil {
 		if errors.Is(err, agent.ErrMissingAPIKey) {
@@ -149,4 +191,13 @@ func (h *PaperHandler) askByPrompt(c *gin.Context, instruction string) {
 		return
 	}
 	response.OK(c, resp)
+}
+
+func buildModelQuery(instruction, userQuery, parsedText string) string {
+	parsedText = strings.TrimSpace(parsedText)
+	// 控制输入长度，避免一次性喂入过长文本。
+	if len(parsedText) > 12000 {
+		parsedText = parsedText[:12000]
+	}
+	return instruction + "\n\n【论文内容】\n" + parsedText + "\n\n【用户问题】\n" + userQuery
 }

@@ -8,19 +8,29 @@ import (
 	"paper-assistant-backend/internal/api/handler"
 	"paper-assistant-backend/internal/api/middleware"
 	"paper-assistant-backend/internal/pkg/config"
+	"paper-assistant-backend/internal/pkg/mysql"
 	"paper-assistant-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
-func New(cfg config.Config) *gin.Engine {
+func New(cfg config.Config) (*gin.Engine, error) {
+	db, err := mysql.New(cfg.MySQL.DSN)
+	if err != nil {
+		return nil, err
+	}
+	if err := mysql.Migrate(context.Background(), db); err != nil {
+		return nil, err
+	}
+
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
 	r.Use(middleware.TraceID())
+	r.Static("/api/v1/uploads", "./uploads")
 
-	authService := service.NewAuthService()
-	paperService := service.NewPaperService()
+	authService := service.NewAuthService(db)
+	paperService := service.NewPaperService(db)
 	agentService, err := agent.NewEinoService(context.Background(), cfg.LLM)
 	if err != nil {
 		log.Printf("init eino service failed, ai endpoints may be unavailable: %v", err)
@@ -50,5 +60,5 @@ func New(cfg config.Config) *gin.Engine {
 			papers.POST("/compare", paperHandler.Compare)
 		}
 	}
-	return r
+	return r, nil
 }

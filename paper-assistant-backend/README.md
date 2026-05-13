@@ -45,10 +45,22 @@ paper-assistant-backend/
 
 ## LLM 环境变量
 
-- `LLM_PROVIDER`：`volcengine` / `aliyun` / `openai-compatible`
-- `LLM_API_KEY`：模型服务 API Key
-- `LLM_BASE_URL`：OpenAI 兼容基础地址（不要写到 `/chat/completions`）
-- `LLM_MODEL`：模型名（默认 `qwen-plus`）
+- `LLM_API_KEY`：模型服务 API Key（必填）
+
+说明：
+
+- `LLM_BASE_URL` 已在代码中固定为 `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`
+- `LLM_MODEL` 已在代码中固定为 `deepseek-v4-flash`
+
+## MySQL 环境变量
+
+- `MYSQL_DSN`：MySQL 连接串  
+  默认值：`root:root@tcp(127.0.0.1:3306)/paper_assistant?charset=utf8mb4&parseTime=true&loc=Local`
+
+说明：
+
+- 服务启动时会自动连接 MySQL 并执行建表迁移（users/papers/parse_jobs/paper_parsed_texts）。
+- 未配置 `MYSQL_DSN` 时使用默认值，请确保本地 MySQL 和库名匹配。
 
 ## Eino 依赖安装
 
@@ -57,5 +69,6 @@ paper-assistant-backend/
 ```bash
 go get github.com/cloudwego/eino@latest
 go get github.com/cloudwego/eino-ext/components/model/openai@latest
+go get github.com/ledongthuc/pdf@latest
 go mod tidy
 ```

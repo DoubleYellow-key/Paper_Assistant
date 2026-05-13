@@ -2,23 +2,25 @@ package config
 
 import (
 	"os"
-	"strings"
 )
 
 type Config struct {
 	HTTPAddr string
 	LLM      LLMConfig
+	MySQL    MySQLConfig
 }
 
 type LLMConfig struct {
-	// provider: volcengine | aliyun | openai-compatible
-	Provider string
 	// OpenAI compatible API key.
 	APIKey string
-	// Base URL，不要带 /chat/completions
+	// 固定使用阿里云兼容端点
 	BaseURL string
-	// 模型名，例如 qwen-plus / doubao-1-5-pro-32k
+	// 固定模型名
 	Model string
+}
+
+type MySQLConfig struct {
+	DSN string
 }
 
 func Load() Config {
@@ -29,22 +31,21 @@ func Load() Config {
 	return Config{
 		HTTPAddr: addr,
 		LLM:      loadLLMConfig(),
+		MySQL:    loadMySQLConfig(),
 	}
 }
 
 func loadLLMConfig() LLMConfig {
-	provider := getEnv("LLM_PROVIDER", "volcengine")
-
-	defaultBaseURL := "https://ark.cn-beijing.volces.com/api/v3"
-	if provider == "aliyun" {
-		defaultBaseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-	}
-
 	return LLMConfig{
-		Provider: provider,
-		APIKey:   getEnv("LLM_API_KEY", ""),
-		BaseURL:  normalizeBaseURL(getEnv("LLM_BASE_URL", defaultBaseURL)),
-		Model:    getEnv("LLM_MODEL", "qwen-plus"),
+		APIKey:  getEnv("LLM_API_KEY", ""),
+		BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1/",
+		Model:   "deepseek-v4-flash",
+	}
+}
+
+func loadMySQLConfig() MySQLConfig {
+	return MySQLConfig{
+		DSN: getEnv("MYSQL_DSN", "root:root@tcp(127.0.0.1:3306)/paper_assistant?charset=utf8mb4&parseTime=true&loc=Local"),
 	}
 }
 
@@ -54,15 +55,4 @@ func getEnv(key, fallback string) string {
 		return fallback
 	}
 	return v
-}
-
-func normalizeBaseURL(raw string) string {
-	raw = strings.TrimSpace(raw)
-	raw = strings.Trim(raw, "`")
-	raw = strings.Trim(raw, "\"")
-	raw = strings.TrimSpace(raw)
-
-	raw = strings.TrimSuffix(raw, "/chat/completions")
-	raw = strings.TrimSuffix(raw, "/")
-	return raw
 }

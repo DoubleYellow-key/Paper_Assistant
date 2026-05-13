@@ -110,6 +110,13 @@ X-Trace-Id: your-trace-id
 }
 ```
 
+状态说明：
+
+- `queued`：任务已创建，等待执行
+- `running`：正在解析
+- `success`：解析成功
+- `failed`：解析失败
+
 ### 5.4 AskResponse（Eino）
 
 ```json
@@ -401,6 +408,7 @@ X-Trace-Id: your-trace-id
 - `agent service unavailable`：`50021`（HTTP 503）
 - 缺少 API Key：`50021`（HTTP 503）
 - 模型调用失败：`50021`（HTTP 502）
+- 论文未解析完成：`40901`（HTTP 409）
 
 ### 6.3.2 论文摘要
 
@@ -457,8 +465,8 @@ X-Trace-Id: your-trace-id
 - 上传接口必须使用 `multipart/form-data`，字段名必须是 `file`。
 - AI 接口若返回 `50021`，优先检查：
   - `LLM_API_KEY` 是否正确
-  - `LLM_BASE_URL` 是否为兼容基础地址（不带 `/chat/completions`）
-  - 模型名是否可用
+  - 固定端点 `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions` 是否可访问
+  - 固定模型 `qwen-plus` 在当前账号是否可用
 
 ## 9. 版本说明
 

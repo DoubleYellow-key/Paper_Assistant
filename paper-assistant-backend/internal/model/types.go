@@ -16,6 +16,7 @@ type Paper struct {
 	Title       string    `json:"title"`
 	FileName    string    `json:"file_name"`
 	FilePath    string    `json:"file_path"`
+	StoragePath string    `json:"-"`
 	FileSize    int64     `json:"file_size"`
 	ParseStatus string    `json:"parse_status"`
 	ParseError  string    `json:"parse_error,omitempty"`

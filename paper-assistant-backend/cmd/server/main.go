@@ -9,7 +9,10 @@ import (
 
 func main() {
 	cfg := config.Load()
-	r := router.New(cfg)
+	r, err := router.New(cfg)
+	if err != nil {
+		log.Fatalf("init router failed: %v", err)
+	}
 	log.Printf("paper assistant backend listening on %s", cfg.HTTPAddr)
 	if err := r.Run(cfg.HTTPAddr); err != nil {
 		log.Fatalf("start server: %v", err)

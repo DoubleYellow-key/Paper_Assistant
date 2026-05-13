@@ -1,14 +1,20 @@
 module paper-assistant-backend
 
-go 1.22
+go 1.24.1
+
+toolchain go1.24.10
 
 require (
 	github.com/cloudwego/eino v0.8.7
 	github.com/cloudwego/eino-ext/components/model/openai v0.1.13
 	github.com/gin-gonic/gin v1.10.0
+	github.com/go-sql-driver/mysql v1.8.1
+	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
+	golang.org/x/crypto v0.31.0
 )
 
 require (
+	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
@@ -45,7 +51,6 @@ require (
 	github.com/wk8/go-ordered-map/v2 v2.1.8 // indirect
 	github.com/yargevad/filepathx v1.0.0 // indirect
 	golang.org/x/arch v0.11.0 // indirect
-	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1 // indirect
 	golang.org/x/net v0.25.0 // indirect
 	golang.org/x/sys v0.28.0 // indirect
