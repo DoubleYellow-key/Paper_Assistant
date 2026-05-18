@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"paper-assistant-backend/internal/api/middleware"
 	apperrors "paper-assistant-backend/internal/pkg/errors"
 	"paper-assistant-backend/internal/pkg/response"
+	"paper-assistant-backend/internal/repository"
 	"paper-assistant-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -27,7 +29,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 	user, err := h.authService.Register(req)
 	if err != nil {
-		response.Fail(c, http.StatusConflict, apperrors.CodeStateConflict, err.Error())
+		if errors.Is(err, repository.ErrEmailExists) {
+			response.Fail(c, http.StatusConflict, apperrors.CodeStateConflict, err.Error())
+			return
+		}
+		response.Fail(c, http.StatusInternalServerError, apperrors.CodeInternal, "register failed")
 		return
 	}
 	response.OK(c, gin.H{"user": user})

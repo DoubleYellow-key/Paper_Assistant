@@ -5,6 +5,7 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+*.pdf
 
 # ----- Common -----
 *.log

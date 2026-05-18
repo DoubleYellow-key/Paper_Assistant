@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Position, ChatDotRound, Document, Refresh } from '@element-plus/icons-vue'
+import { ChatDotRound, Document } from '@element-plus/icons-vue'
 import { getPaperDetail, getParseJobLatest } from '@/api/paper'
 import { askQuestion, getSummary } from '@/api/ai'
 

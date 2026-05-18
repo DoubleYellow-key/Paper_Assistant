@@ -1,112 +1,112 @@
 package service
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
-	"sort"
-	"sync"
+	"strings"
 	"time"
 
 	"paper-assistant-backend/internal/model"
+	"paper-assistant-backend/internal/repository"
 )
 
 type UploadPaperInput struct {
 	UserID   uint64
 	Title    string
 	FileName string
+	FilePath string
 	FileSize int64
 }
 
 type PaperService struct {
-	mu           sync.RWMutex
-	nextPaperID  uint64
-	nextParseJob uint64
-	papers       map[uint64]model.Paper
-	parseJobs    map[uint64]model.ParseJob // key: paperID
+	db           *sql.DB
+	paperRepo    *repository.PaperRepository
+	parseJobRepo *repository.ParseJobRepository
 }
 
-func NewPaperService() *PaperService {
+func NewPaperService(db *sql.DB, paperRepo *repository.PaperRepository, parseJobRepo *repository.ParseJobRepository) *PaperService {
 	return &PaperService{
-		nextPaperID:  1,
-		nextParseJob: 1,
-		papers:       make(map[uint64]model.Paper),
-		parseJobs:    make(map[uint64]model.ParseJob),
+		db:           db,
+		paperRepo:    paperRepo,
+		parseJobRepo: parseJobRepo,
 	}
 }
 
-func (s *PaperService) Upload(in UploadPaperInput) (model.Paper, model.ParseJob) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+func (s *PaperService) Upload(in UploadPaperInput) (model.Paper, model.ParseJob, error) {
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.Paper{}, model.ParseJob{}, fmt.Errorf("begin upload transaction: %w", err)
+	}
 	now := time.Now()
+	startedAt := now
+	finishedAt := now
 	paper := model.Paper{
-		ID:          s.nextPaperID,
 		UserID:      in.UserID,
 		Title:       fallbackTitle(in.Title, in.FileName),
 		FileName:    in.FileName,
-		FilePath:    "/uploads/" + in.FileName,
+		FilePath:    in.FilePath,
 		FileSize:    in.FileSize,
-		ParseStatus: "pending",
+		ParseStatus: "completed",
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	s.nextPaperID++
-	s.papers[paper.ID] = paper
+	paper, err = s.paperRepo.CreateTx(ctx, tx, paper)
+	if err != nil {
+		_ = tx.Rollback()
+		return model.Paper{}, model.ParseJob{}, err
+	}
 
 	job := model.ParseJob{
-		ID:         s.nextParseJob,
 		PaperID:    paper.ID,
-		Status:     "queued",
-		Progress:   0,
+		Status:     "completed",
+		Progress:   100,
 		RetryCount: 0,
 		MaxRetries: 3,
+		StartedAt:  &startedAt,
+		FinishedAt: &finishedAt,
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
-	s.nextParseJob++
-	s.parseJobs[paper.ID] = job
-	return paper, job
+	job, err = s.parseJobRepo.CreateTx(ctx, tx, job)
+	if err != nil {
+		_ = tx.Rollback()
+		return model.Paper{}, model.ParseJob{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
+		return model.Paper{}, model.ParseJob{}, fmt.Errorf("commit upload transaction: %w", err)
+	}
+	return paper, job, nil
 }
 
-func (s *PaperService) ListByUser(userID uint64) []model.Paper {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]model.Paper, 0, len(s.papers))
-	for _, p := range s.papers {
-		if p.UserID == userID {
-			out = append(out, p)
-		}
+func (s *PaperService) ListByUser(userID uint64) ([]model.Paper, error) {
+	papers, err := s.paperRepo.ListByUser(context.Background(), userID)
+	if err != nil {
+		return nil, err
 	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].CreatedAt.After(out[j].CreatedAt)
-	})
-	return out
+	return papers, nil
 }
 
 func (s *PaperService) GetByID(userID, paperID uint64) (model.Paper, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	p, ok := s.papers[paperID]
-	if !ok || p.UserID != userID {
-		return model.Paper{}, fmt.Errorf("paper not found")
+	paper, err := s.paperRepo.GetByIDAndUserID(context.Background(), paperID, userID)
+	if err != nil {
+		return model.Paper{}, err
 	}
-	return p, nil
+	return paper, nil
 }
 
 func (s *PaperService) GetLatestParseJob(userID, paperID uint64) (model.ParseJob, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	p, ok := s.papers[paperID]
-	if !ok || p.UserID != userID {
-		return model.ParseJob{}, fmt.Errorf("paper not found")
-	}
-	job, ok := s.parseJobs[paperID]
-	if !ok {
-		return model.ParseJob{}, fmt.Errorf("parse job not found")
+	job, err := s.parseJobRepo.GetLatestByPaperIDAndUserID(context.Background(), paperID, userID)
+	if err != nil {
+		return model.ParseJob{}, err
 	}
 	return job, nil
 }
 
 func fallbackTitle(title, fileName string) string {
+	title = strings.TrimSpace(title)
 	if title != "" {
 		return title
 	}

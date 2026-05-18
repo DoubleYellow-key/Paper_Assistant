@@ -2,15 +2,20 @@ package router
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"log"
+	"net/http"
 
 	"paper-assistant-backend/internal/agent"
 	"paper-assistant-backend/internal/api/handler"
 	"paper-assistant-backend/internal/api/middleware"
 	"paper-assistant-backend/internal/pkg/config"
+	"paper-assistant-backend/internal/repository"
 	"paper-assistant-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
+	_ "github.com/go-sql-driver/mysql"
 )
 
 func New(cfg config.Config) *gin.Engine {
@@ -18,12 +23,39 @@ func New(cfg config.Config) *gin.Engine {
 	r.Use(gin.Recovery())
 	r.Use(gin.Logger())
 	r.Use(middleware.TraceID())
+	r.StaticFS("/api/v1/uploads", http.Dir("./uploads"))
 
-	authService := service.NewAuthService()
-	paperService := service.NewPaperService()
+	if cfg.MySQL.DSN == "" {
+		log.Fatal("MYSQL_DSN is required")
+	}
+	db, err := sql.Open("mysql", cfg.MySQL.DSN)
+	if err != nil {
+		log.Fatalf("open mysql: %v", err)
+	}
+	if err := db.PingContext(context.Background()); err != nil {
+		log.Fatalf("ping mysql: %v", err)
+	}
+	userRepo := repository.NewUserRepository(db)
+	if err := userRepo.EnsureSchema(context.Background()); err != nil {
+		log.Fatalf("ensure user schema: %v", err)
+	}
+	paperRepo := repository.NewPaperRepository(db)
+	if err := paperRepo.EnsureSchema(context.Background()); err != nil {
+		log.Fatalf("ensure paper schema: %v", err)
+	}
+	parseJobRepo := repository.NewParseJobRepository(db)
+	if err := parseJobRepo.EnsureSchema(context.Background()); err != nil {
+		log.Fatalf("ensure parse job schema: %v", err)
+	}
+
+	authService := service.NewAuthService(userRepo)
+	paperService := service.NewPaperService(db, paperRepo, parseJobRepo)
 	agentService, err := agent.NewEinoService(context.Background(), cfg.LLM)
 	if err != nil {
 		log.Printf("init eino service failed, ai endpoints may be unavailable: %v", err)
+		if errors.Is(err, agent.ErrMissingAPIKey) {
+			agentService = agent.NewErrorService(err)
+		}
 	}
 
 	authHandler := handler.NewAuthHandler(authService)

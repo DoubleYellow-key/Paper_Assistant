@@ -7,7 +7,12 @@ import (
 
 type Config struct {
 	HTTPAddr string
+	MySQL    MySQLConfig
 	LLM      LLMConfig
+}
+
+type MySQLConfig struct {
+	DSN string
 }
 
 type LLMConfig struct {
@@ -28,16 +33,23 @@ func Load() Config {
 	}
 	return Config{
 		HTTPAddr: addr,
+		MySQL:    loadMySQLConfig(),
 		LLM:      loadLLMConfig(),
 	}
 }
 
-func loadLLMConfig() LLMConfig {
-	provider := getEnv("LLM_PROVIDER", "volcengine")
+func loadMySQLConfig() MySQLConfig {
+	return MySQLConfig{
+		DSN: getEnv("MYSQL_DSN", "paper_assistant:paper_assistant@tcp(127.0.0.1:3306)/paper_assistant?charset=utf8mb4&parseTime=True&loc=Local"),
+	}
+}
 
-	defaultBaseURL := "https://ark.cn-beijing.volces.com/api/v3"
-	if provider == "aliyun" {
-		defaultBaseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+func loadLLMConfig() LLMConfig {
+	provider := getEnv("LLM_PROVIDER", "aliyun")
+
+	defaultBaseURL := "https://dashscope.aliyuncs.com/compatible-mode/v1"
+	if provider == "volcengine" {
+		defaultBaseURL = "https://ark.cn-beijing.volces.com/api/v3"
 	}
 
 	return LLMConfig{

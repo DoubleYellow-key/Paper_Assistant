@@ -4,10 +4,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Message } from '@element-plus/icons-vue'
 import { register } from '@/api/auth'
-import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
-const userStore = useUserStore()
 
 const loading = ref(false)
 const registerForm = reactive({
@@ -29,7 +27,7 @@ const handleRegister = async () => {
   
   loading.value = true
   try {
-    const res: any = await register({
+    await register({
       username: registerForm.username,
       email: registerForm.email,
       password: registerForm.password

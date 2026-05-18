@@ -1,11 +1,14 @@
 package service
 
 import (
+	"context"
 	"fmt"
-	"sync"
-	"time"
+	"strings"
 
 	"paper-assistant-backend/internal/model"
+	"paper-assistant-backend/internal/repository"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type RegisterInput struct {
@@ -20,49 +23,42 @@ type LoginInput struct {
 }
 
 type AuthService struct {
-	mu        sync.RWMutex
-	nextUser  uint64
-	usersByID map[uint64]model.User
-	usersByEM map[string]uint64
+	userRepo *repository.UserRepository
 }
 
-func NewAuthService() *AuthService {
-	return &AuthService{
-		nextUser:  1,
-		usersByID: make(map[uint64]model.User),
-		usersByEM: make(map[string]uint64),
-	}
+func NewAuthService(userRepo *repository.UserRepository) *AuthService {
+	return &AuthService{userRepo: userRepo}
 }
 
 func (s *AuthService) Register(in RegisterInput) (model.User, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, exists := s.usersByEM[in.Email]; exists {
-		return model.User{}, fmt.Errorf("email already exists")
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return model.User{}, fmt.Errorf("hash password: %w", err)
 	}
-	now := time.Now()
-	user := model.User{
-		ID:        s.nextUser,
-		Username:  in.Username,
-		Email:     in.Email,
-		Role:      "user",
-		CreatedAt: now,
+	user, err := s.userRepo.Create(
+		context.Background(),
+		strings.TrimSpace(in.Username),
+		strings.TrimSpace(strings.ToLower(in.Email)),
+		string(passwordHash),
+	)
+	if err != nil {
+		if err == repository.ErrEmailExists {
+			return model.User{}, err
+		}
+		return model.User{}, fmt.Errorf("create user: %w", err)
 	}
-	s.nextUser++
-	s.usersByID[user.ID] = user
-	s.usersByEM[user.Email] = user.ID
 	return user, nil
 }
 
 func (s *AuthService) Login(in LoginInput) (string, model.User, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	userID, ok := s.usersByEM[in.Email]
-	if !ok {
-		return "", model.User{}, fmt.Errorf("invalid credentials")
+	user, passwordHash, err := s.userRepo.GetByEmail(context.Background(), strings.TrimSpace(strings.ToLower(in.Email)))
+	if err != nil {
+		if err == repository.ErrUserNotFound {
+			return "", model.User{}, fmt.Errorf("invalid credentials")
+		}
+		return "", model.User{}, fmt.Errorf("query user by email: %w", err)
 	}
-	user, ok := s.usersByID[userID]
-	if !ok {
+	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(in.Password)); err != nil {
 		return "", model.User{}, fmt.Errorf("invalid credentials")
 	}
 	token := fmt.Sprintf("uid-%d", user.ID)
@@ -70,8 +66,6 @@ func (s *AuthService) Login(in LoginInput) (string, model.User, error) {
 }
 
 func (s *AuthService) GetUser(userID uint64) (model.User, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	user, ok := s.usersByID[userID]
-	return user, ok
+	user, _, err := s.userRepo.GetByID(context.Background(), userID)
+	return user, err == nil
 }

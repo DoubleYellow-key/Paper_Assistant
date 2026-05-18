@@ -1,9 +1,15 @@
 package handler
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"paper-assistant-backend/internal/agent"
 	"paper-assistant-backend/internal/api/middleware"
@@ -38,13 +44,29 @@ func (h *PaperHandler) Upload(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, apperrors.CodeBadRequest, "file is required")
 		return
 	}
+	if err := os.MkdirAll("uploads", 0755); err != nil {
+		response.Fail(c, http.StatusInternalServerError, apperrors.CodeInternal, "create upload dir failed")
+		return
+	}
+	storedName := buildStoredFileName(file.Filename)
+	dst := filepath.Join("uploads", storedName)
+	if err := c.SaveUploadedFile(file, dst); err != nil {
+		response.Fail(c, http.StatusInternalServerError, apperrors.CodeInternal, "save uploaded file failed")
+		return
+	}
 	title := c.PostForm("title")
-	paper, job := h.paperService.Upload(service.UploadPaperInput{
+	paper, job, err := h.paperService.Upload(service.UploadPaperInput{
 		UserID:   userID,
 		Title:    title,
 		FileName: file.Filename,
+		FilePath: "/uploads/" + storedName,
 		FileSize: file.Size,
 	})
+	if err != nil {
+		_ = os.Remove(dst)
+		response.Fail(c, http.StatusInternalServerError, apperrors.CodeInternal, "create paper record failed")
+		return
+	}
 	response.OK(c, gin.H{
 		"paper":     paper,
 		"parse_job": job,
@@ -57,7 +79,12 @@ func (h *PaperHandler) List(c *gin.Context) {
 		response.Fail(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "unauthorized")
 		return
 	}
-	response.OK(c, gin.H{"items": h.paperService.ListByUser(userID)})
+	items, err := h.paperService.ListByUser(userID)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, apperrors.CodeInternal, "list papers failed")
+		return
+	}
+	response.OK(c, gin.H{"items": items})
 }
 
 func (h *PaperHandler) Detail(c *gin.Context) {
@@ -149,4 +176,26 @@ func (h *PaperHandler) askByPrompt(c *gin.Context, instruction string) {
 		return
 	}
 	response.OK(c, resp)
+}
+
+func buildStoredFileName(original string) string {
+	base := filepath.Base(original)
+	base = strings.ReplaceAll(base, string(os.PathSeparator), "_")
+	base = strings.ReplaceAll(base, " ", "_")
+	randHex := randomHex(12)
+	ext := filepath.Ext(base)
+	name := strings.TrimSuffix(base, ext)
+	if name == "" {
+		name = "paper"
+	}
+	if ext == "" {
+		ext = ".pdf"
+	}
+	return fmt.Sprintf("%s_%s%s", name, randHex, ext)
+}
+
+func randomHex(nBytes int) string {
+	b := make([]byte, nBytes)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }

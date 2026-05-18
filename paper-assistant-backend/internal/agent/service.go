@@ -30,6 +30,18 @@ type Service interface {
 	Ask(ctx context.Context, req AskRequest) (AskResponse, error)
 }
 
+type errorService struct {
+	err error
+}
+
+func NewErrorService(err error) Service {
+	return &errorService{err: err}
+}
+
+func (s *errorService) Ask(ctx context.Context, req AskRequest) (AskResponse, error) {
+	return AskResponse{}, s.err
+}
+
 type einoService struct {
 	model *openai.ChatModel
 }

@@ -25,7 +25,7 @@ const fetchPapers = async () => {
   }
 }
 
-const handleUploadChange = (file: any, fileListConfig: any) => {
+const handleUploadChange = (_file: any, fileListConfig: any) => {
   fileList.value = fileListConfig.slice(-1)
 }
 
