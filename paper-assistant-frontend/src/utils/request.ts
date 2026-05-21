@@ -29,20 +29,26 @@ request.interceptors.response.use(
       return response
     }
     if (res.code !== 0) {
-      ElMessage.error(res.message || '请求失败')
+      if (res.code !== 40901) {
+        ElMessage.error(res.message || '请求失败')
+      }
       if (res.code === 40101) {
         const userStore = useUserStore()
         userStore.logout()
         router.push('/login')
       }
-      return Promise.reject(new Error(res.message || 'Error'))
+      const error: any = new Error(res.message || 'Error')
+      error.code = res.code
+      return Promise.reject(error)
     }
     return res.data
   },
   (error) => {
     const res = error.response?.data
     const msg = res?.message || error.message || '系统错误'
-    ElMessage.error(msg)
+    if (res?.code !== 40901) {
+      ElMessage.error(msg)
+    }
     if (res?.code === 40101 || error.response?.status === 401) {
       const userStore = useUserStore()
       userStore.logout()

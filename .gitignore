@@ -32,6 +32,7 @@ build/
 *.dylib
 *.test
 *.out
+*.pdf
 coverage.out
 *.coverprofile
 coverage/

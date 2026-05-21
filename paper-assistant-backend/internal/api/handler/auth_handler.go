@@ -24,7 +24,7 @@ func NewAuthHandler(authService *service.AuthService) *AuthHandler {
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req service.RegisterInput
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, apperrors.CodeBadRequest, "invalid request body")
+		response.Fail(c, http.StatusBadRequest, apperrors.CodeBadRequest, "invalid request body: "+err.Error())
 		return
 	}
 	user, err := h.authService.Register(req)
@@ -42,7 +42,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req service.LoginInput
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, apperrors.CodeBadRequest, "invalid request body")
+		response.Fail(c, http.StatusBadRequest, apperrors.CodeBadRequest, "invalid request body: "+err.Error())
 		return
 	}
 	token, user, err := h.authService.Login(req)
