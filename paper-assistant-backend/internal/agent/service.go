@@ -15,8 +15,9 @@ import (
 var ErrMissingAPIKey = errors.New("missing llm api key")
 
 type AskRequest struct {
-	PaperID uint64
-	Query   string
+	PaperID      uint64
+	Query        string
+	SystemPrompt string
 }
 
 type AskResponse struct {
@@ -64,8 +65,12 @@ func NewEinoService(ctx context.Context, cfg config.LLMConfig) (Service, error) 
 }
 
 func (s *einoService) Ask(ctx context.Context, req AskRequest) (AskResponse, error) {
+	systemPrompt := req.SystemPrompt
+	if strings.TrimSpace(systemPrompt) == "" {
+		systemPrompt = "你是论文阅读助手，请给出准确、简洁、可追溯的回答。"
+	}
 	msg, err := s.model.Generate(ctx, []*schema.Message{
-		schema.SystemMessage("你是论文阅读助手，请给出准确、简洁、可追溯的回答。"),
+		schema.SystemMessage(systemPrompt),
 		schema.UserMessage(req.Query),
 	})
 	if err != nil {

@@ -47,6 +47,10 @@ func New(cfg config.Config) *gin.Engine {
 	if err := parseJobRepo.EnsureSchema(context.Background()); err != nil {
 		log.Fatalf("ensure parse job schema: %v", err)
 	}
+	translationRepo := repository.NewTranslationRepository(db)
+	if err := translationRepo.EnsureSchema(context.Background()); err != nil {
+		log.Fatalf("ensure translation schema: %v", err)
+	}
 
 	authService := service.NewAuthService(userRepo)
 	paperService := service.NewPaperService(db, paperRepo, parseJobRepo)
@@ -57,9 +61,14 @@ func New(cfg config.Config) *gin.Engine {
 			agentService = agent.NewErrorService(err)
 		}
 	}
+	translationService := service.NewTranslationService(paperRepo, translationRepo, agentService)
+	knowledgeQAService, err := service.NewKnowledgeQAService(cfg, paperRepo, agentService)
+	if err != nil {
+		log.Printf("init knowledge qa service failed, rag endpoints may be unavailable: %v", err)
+	}
 
 	authHandler := handler.NewAuthHandler(authService)
-	paperHandler := handler.NewPaperHandler(paperService, agentService)
+	paperHandler := handler.NewPaperHandler(knowledgeQAService, paperService, translationService, agentService)
 
 	api := r.Group("/api/v1")
 	{
@@ -79,6 +88,8 @@ func New(cfg config.Config) *gin.Engine {
 			papers.POST("/:id/qa", paperHandler.QA)
 			papers.POST("/:id/summary", paperHandler.Summary)
 			papers.POST("/:id/term-explain", paperHandler.TermExplain)
+			papers.POST("/:id/translate", paperHandler.Translate)
+			papers.GET("/:id/translations/latest", paperHandler.LatestTranslation)
 			papers.POST("/compare", paperHandler.Compare)
 		}
 	}

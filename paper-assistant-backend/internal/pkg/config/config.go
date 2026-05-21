@@ -6,13 +6,19 @@ import (
 )
 
 type Config struct {
-	HTTPAddr string
-	MySQL    MySQLConfig
-	LLM      LLMConfig
+	HTTPAddr  string
+	MySQL     MySQLConfig
+	LLM       LLMConfig
+	Embedding EmbeddingConfig
+	Vector    VectorConfig
 }
 
 type MySQLConfig struct {
 	DSN string
+}
+
+type VectorConfig struct {
+	Path string
 }
 
 type LLMConfig struct {
@@ -26,21 +32,35 @@ type LLMConfig struct {
 	Model string
 }
 
+type EmbeddingConfig struct {
+	APIKey  string
+	BaseURL string
+	Model   string
+}
+
 func Load() Config {
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
 		addr = ":8080"
 	}
 	return Config{
-		HTTPAddr: addr,
-		MySQL:    loadMySQLConfig(),
-		LLM:      loadLLMConfig(),
+		HTTPAddr:  addr,
+		MySQL:     loadMySQLConfig(),
+		LLM:       loadLLMConfig(),
+		Embedding: loadEmbeddingConfig(),
+		Vector:    loadVectorConfig(),
 	}
 }
 
 func loadMySQLConfig() MySQLConfig {
 	return MySQLConfig{
 		DSN: getEnv("MYSQL_DSN", "paper_assistant:paper_assistant@tcp(127.0.0.1:3306)/paper_assistant?charset=utf8mb4&parseTime=True&loc=Local"),
+	}
+}
+
+func loadVectorConfig() VectorConfig {
+	return VectorConfig{
+		Path: getEnv("VECTOR_DB_PATH", "vectordb"),
 	}
 }
 
@@ -57,6 +77,15 @@ func loadLLMConfig() LLMConfig {
 		APIKey:   getEnv("LLM_API_KEY", ""),
 		BaseURL:  normalizeBaseURL(getEnv("LLM_BASE_URL", defaultBaseURL)),
 		Model:    getEnv("LLM_MODEL", "qwen-plus"),
+	}
+}
+
+func loadEmbeddingConfig() EmbeddingConfig {
+	llmCfg := loadLLMConfig()
+	return EmbeddingConfig{
+		APIKey:  getEnv("EMBEDDING_API_KEY", llmCfg.APIKey),
+		BaseURL: normalizeBaseURL(getEnv("EMBEDDING_BASE_URL", llmCfg.BaseURL)),
+		Model:   getEnv("EMBEDDING_MODEL", "text-embedding-v3"),
 	}
 }
 

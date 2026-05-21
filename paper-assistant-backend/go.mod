@@ -1,12 +1,14 @@
 module paper-assistant-backend
 
-go 1.24.0
+go 1.24.1
 
 require (
 	github.com/cloudwego/eino v0.8.7
 	github.com/cloudwego/eino-ext/components/model/openai v0.1.13
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-sql-driver/mysql v1.10.0
+	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
+	github.com/philippgille/chromem-go v0.7.0
 	golang.org/x/crypto v0.31.0
 )
 

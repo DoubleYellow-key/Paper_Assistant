@@ -36,3 +36,14 @@ type ParseJob struct {
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
 }
+
+type PaperTranslation struct {
+	ID             uint64    `json:"id"`
+	PaperID        uint64    `json:"paper_id"`
+	TargetLanguage string    `json:"target_language"`
+	Status         string    `json:"status"`
+	Content        string    `json:"content,omitempty"`
+	ErrorMsg       string    `json:"error_message,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}

@@ -1,6 +1,6 @@
 # 智能论文阅读辅助助手（Paper Assistant）
 
-基于 `Go + Gin + Eino + Vue3` 的前后端分离项目，面向论文阅读场景，提供上传解析、智能问答、术语解释、摘要生成与多论文对比能力（部分能力为占位实现）。
+基于 `Go + Gin + Eino + Vue3` 的前后端分离项目，面向论文阅读场景，提供论文上传、（轻量）解析状态管理、基于论文内容的知识问答（RAG）、术语解释、摘要生成与翻译等能力。
 
 ## 项目亮点
 
@@ -8,30 +8,22 @@
 - 后端统一响应规范：`code / message / data / trace_id`。
 - 内置 `trace_id` 中间件，支持链路追踪。
 - 提供基础认证与论文管理 API，可直接联调。
-- AI 能力基于 Eino 接入，支持问答、摘要、术语解释。
-- `users`、`papers`、`parse_jobs` 已接入 MySQL 持久化，重启后不会丢失。
+- AI 能力通过 Eino 接入 OpenAI-compatible 模型，支持摘要、术语解释、翻译等。
+- 提供基于 `chromem-go` 的本地持久化向量库：首次对某篇论文提问时自动抽取 PDF 文本、切分、Embedding 入库，后续问答走相似检索（RAG）。
+- `users`、`papers`、`parse_jobs`、`paper_translations` 已接入 MySQL 持久化，重启后不会丢失。
 - 提供 OpenAPI 文档，方便前后端联调与测试。
 
 ## 仓库结构
 
 ```text
-go项目/
+Paper_Assistant/
   README.md
-  .gitignore
-  doc/
-    gin-eino-项目选题分析.md
-    论文阅读助手-项目总体框架与流程.md
-    论文阅读助手-前端模块设计.md
-    论文阅读助手-后端模块设计.md
-    论文阅读助手-Eino智能体构建方案.md
-    论文阅读助手-数据库表结构草案(SQL版).md
-  paper-assistant-backend/
-    cmd/server/main.go
-    internal/
-    doc/openapi.yaml
-  paper-assistant-frontend/
+  paper-assistant-backend/        # Go + Gin 后端
+    cmd/server/main.go            # 启动入口
+    internal/                     # handler/service/repository 等
+    doc/                          # OpenAPI 与接口说明
+  paper-assistant-frontend/       # Vue3 + Vite 前端
     src/
-    package.json
 ```
 
 ## 技术栈
@@ -40,8 +32,7 @@ go项目/
 - AI 编排：`Eino`、`eino-ext/openai`
 - 前端：`Vue3`、`TypeScript`、`Vite`、`Pinia`、`Element Plus`
 - 文档：`OpenAPI 3.0.3`、Markdown
-- 当前存储：`MySQL`（用户、论文、解析任务） + 本地文件系统 `uploads/`
-- 规划中的存储：`Redis`、向量检索（`pgvector/Milvus/ES`）
+- 当前存储：`MySQL`（用户、论文、解析任务、翻译结果） + 本地文件系统 `uploads/` + 本地向量库目录（默认 `vectordb/`）
 
 ## 当前实现状态（MVP）
 
@@ -57,14 +48,17 @@ go项目/
   - `GET /api/v1/papers/{id}`
   - `GET /api/v1/papers/{id}/parse-jobs/latest`
 - AI 能力：
-  - `POST /api/v1/papers/{id}/qa`
+  - `POST /api/v1/papers/{id}/qa`（RAG：向量检索 + 引用片段）
   - `POST /api/v1/papers/{id}/summary`
   - `POST /api/v1/papers/{id}/term-explain`
+  - `POST /api/v1/papers/{id}/translate`
+  - `GET /api/v1/papers/{id}/translations/latest`
   - `POST /api/v1/papers/compare`（当前占位）
 - 数据持久化：
   - `users` 表：用户账号、邮箱、角色
   - `papers` 表：论文元数据、文件路径、解析状态
   - `parse_jobs` 表：解析任务状态与进度
+  - `paper_translations` 表：翻译结果缓存（按论文 + 目标语言唯一）
 - 文件存储：
   - PDF 原文件保存在 `paper-assistant-backend/uploads/`
   - 后端通过 `/api/v1/uploads/*` 提供预览访问
@@ -74,10 +68,10 @@ go项目/
 
 ### 计划中
 
-- 解析任务队列与 Worker
-- RAG 检索链路与引用追溯增强
+- 解析任务队列与 Worker（当前上传后 parse_job 直接标记为 completed）
+- RAG 的引用结构化（页码/段落定位等）
 - 多论文对比完整实现
-- 更完整的登录态（JWT）与权限校验
+- 标准 JWT 与权限校验
 
 ## 快速启动
 
@@ -86,8 +80,8 @@ go项目/
 ### 前置条件
 
 - 已安装并启动本地 MySQL
-- 已创建数据库与账号，或直接使用代码中的默认本地配置
-- 如需 AI 能力，至少设置 `LLM_API_KEY`
+- 已创建数据库与账号，或直接使用默认本地配置
+- 如需 AI 能力（摘要/术语解释/翻译/RAG），至少设置 `LLM_API_KEY`（Embedding 默认复用该 Key）
 
 ### 默认本地 MySQL 配置
 
@@ -102,6 +96,7 @@ paper_assistant:paper_assistant@tcp(127.0.0.1:3306)/paper_assistant?charset=utf8
 - `users`
 - `papers`
 - `parse_jobs`
+- `paper_translations`
 
 进入 `paper-assistant-backend` 后运行：
 
@@ -142,36 +137,50 @@ http://<你的局域网IP>:8080
 ## 接口文档
 
 - OpenAPI 文件：`paper-assistant-backend/doc/openapi.yaml`
+- 中文接口说明：`paper-assistant-backend/doc/API-接口文档.md`
 - 后端说明：`paper-assistant-backend/README.md`
+
+## 鉴权说明
+
+- 当前为演示版 token：登录成功后返回 `token`，格式为 `uid-<数字>`。
+- 调用需要鉴权的接口时，请在请求头携带：`Authorization: Bearer uid-<数字>`。
 
 ## 环境变量
 
+### 服务地址
+
+- `HTTP_ADDR`：HTTP 监听地址（默认 `:8080`）
+
 ### MySQL
 
-- `MYSQL_DSN`：MySQL 连接串；不设置时使用本地默认值
+- `MYSQL_DSN`：MySQL 连接串（默认见上文）
 
-### AI
+### LLM（摘要/术语解释/翻译等）
 
-后端支持以下模型配置；当前默认平台为阿里云兼容模式，若你只设置 `LLM_API_KEY`，将优先按阿里云配置发起调用。
+后端通过 Eino 使用 OpenAI-compatible 协议。`LLM_PROVIDER` 主要用于给出默认的 `LLM_BASE_URL`。
 
-- `LLM_PROVIDER`：`aliyun` / `volcengine` / `openai-compatible`
-- `LLM_API_KEY`：模型服务 API Key
-- `LLM_BASE_URL`：OpenAI 兼容基础地址（不带 `/chat/completions`）
+- `LLM_PROVIDER`：`aliyun` / `volcengine` / `openai-compatible`（默认 `aliyun`）
+- `LLM_API_KEY`：API Key（默认空；为空时 AI 能力将不可用）
+- `LLM_BASE_URL`：OpenAI-compatible Base URL（不要写到 `/chat/completions`；末尾 `/` 会被自动规整）
 - `LLM_MODEL`：模型名（默认 `qwen-plus`）
 
-阿里云默认基础地址：
+### Embedding（RAG）
 
-```text
-https://dashscope.aliyuncs.com/compatible-mode/v1
-```
+Embedding 默认复用 LLM 配置（APIKey/BaseURL），可按需覆盖。
 
-## 文档索引
+- `EMBEDDING_API_KEY`：Embedding API Key（默认同 `LLM_API_KEY`）
+- `EMBEDDING_BASE_URL`：Embedding Base URL（默认同 `LLM_BASE_URL`）
+- `EMBEDDING_MODEL`：Embedding 模型名（默认 `text-embedding-v3`）
 
-- 项目总览与流程：`doc/论文阅读助手-项目总体框架与流程.md`
-- Eino 智能体方案：`doc/论文阅读助手-Eino智能体构建方案.md`
-- 数据库草案（SQL）：`doc/论文阅读助手-数据库表结构草案(SQL版).md`
-- 前端模块设计：`doc/论文阅读助手-前端模块设计.md`
-- 后端模块设计：`doc/论文阅读助手-后端模块设计.md`
+### 向量库
+
+- `VECTOR_DB_PATH`：向量库持久化目录（默认 `vectordb`）
+
+## 常见问题
+
+- 启动时报 MySQL 连接失败：检查 `MYSQL_DSN`、库/账号是否存在、MySQL 是否允许本机连接。
+- AI 接口返回 `missing llm api key`：设置 `LLM_API_KEY`（如 Embedding 单独计费，再设置 `EMBEDDING_API_KEY`）。
+- 首次对某论文提问较慢：会进行 PDF 抽取、切分与向量化入库；可删除 `vectordb/` 以重新构建索引。
 
 ## 后续建议
 

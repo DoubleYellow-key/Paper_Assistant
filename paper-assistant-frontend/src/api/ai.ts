@@ -23,3 +23,28 @@ export function explainTerm(paperId: string | number, query: string) {
     data: { query }
   })
 }
+
+export function translatePaper(
+  paperId: string | number,
+  targetLanguage: string = 'zh-CN',
+  forceRegenerate: boolean = false
+) {
+  return request({
+    url: `/papers/${paperId}/translate`,
+    method: 'post',
+    data: {
+      target_language: targetLanguage,
+      force_regenerate: forceRegenerate
+    }
+  })
+}
+
+export function getLatestTranslation(paperId: string | number, targetLanguage: string = 'zh-CN') {
+  return request({
+    url: `/papers/${paperId}/translations/latest`,
+    method: 'get',
+    params: {
+      target_language: targetLanguage
+    }
+  })
+}

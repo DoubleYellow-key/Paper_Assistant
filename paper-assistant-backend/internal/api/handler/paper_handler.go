@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,20 +16,30 @@ import (
 	"paper-assistant-backend/internal/api/middleware"
 	apperrors "paper-assistant-backend/internal/pkg/errors"
 	"paper-assistant-backend/internal/pkg/response"
+	"paper-assistant-backend/internal/repository"
 	"paper-assistant-backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
 type PaperHandler struct {
-	paperService *service.PaperService
-	agentService agent.Service
+	knowledgeQAService *service.KnowledgeQAService
+	paperService       *service.PaperService
+	translationService *service.TranslationService
+	agentService       agent.Service
 }
 
-func NewPaperHandler(paperService *service.PaperService, agentService agent.Service) *PaperHandler {
+func NewPaperHandler(
+	knowledgeQAService *service.KnowledgeQAService,
+	paperService *service.PaperService,
+	translationService *service.TranslationService,
+	agentService agent.Service,
+) *PaperHandler {
 	return &PaperHandler{
-		paperService: paperService,
-		agentService: agentService,
+		knowledgeQAService: knowledgeQAService,
+		paperService:       paperService,
+		translationService: translationService,
+		agentService:       agentService,
 	}
 }
 
@@ -126,7 +137,39 @@ func (h *PaperHandler) LatestParseJob(c *gin.Context) {
 }
 
 func (h *PaperHandler) QA(c *gin.Context) {
-	h.askByPrompt(c, "请根据论文内容回答用户问题：")
+	userID, ok := middleware.MustUserID(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "unauthorized")
+		return
+	}
+	if h.knowledgeQAService == nil {
+		response.Fail(c, http.StatusServiceUnavailable, apperrors.CodeModelFailed, "knowledge qa service unavailable")
+		return
+	}
+	paperID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || paperID == 0 {
+		response.Fail(c, http.StatusBadRequest, apperrors.CodeBadRequest, "invalid id")
+		return
+	}
+	var req askRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, apperrors.CodeBadRequest, "invalid request body")
+		return
+	}
+	resp, err := h.knowledgeQAService.Ask(c.Request.Context(), userID, paperID, req.Query)
+	if err != nil {
+		if errors.Is(err, agent.ErrMissingAPIKey) {
+			response.Fail(c, http.StatusServiceUnavailable, apperrors.CodeModelFailed, "missing llm api key")
+			return
+		}
+		if errors.Is(err, repository.ErrPaperNotFound) {
+			response.Fail(c, http.StatusNotFound, apperrors.CodeNotFound, "paper not found")
+			return
+		}
+		response.Fail(c, http.StatusBadGateway, apperrors.CodeModelFailed, err.Error())
+		return
+	}
+	response.OK(c, resp)
 }
 
 func (h *PaperHandler) Summary(c *gin.Context) {
@@ -137,12 +180,85 @@ func (h *PaperHandler) TermExplain(c *gin.Context) {
 	h.askByPrompt(c, "请解释术语并给出通俗说明：")
 }
 
+func (h *PaperHandler) Translate(c *gin.Context) {
+	userID, ok := middleware.MustUserID(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "unauthorized")
+		return
+	}
+	if h.translationService == nil {
+		response.Fail(c, http.StatusServiceUnavailable, apperrors.CodeModelFailed, "translation service unavailable")
+		return
+	}
+	paperID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || paperID == 0 {
+		response.Fail(c, http.StatusBadRequest, apperrors.CodeBadRequest, "invalid id")
+		return
+	}
+	var req translateRequest
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		response.Fail(c, http.StatusBadRequest, apperrors.CodeBadRequest, "invalid request body")
+		return
+	}
+	translation, err := h.translationService.Translate(c.Request.Context(), service.TranslateInput{
+		UserID:          userID,
+		PaperID:         paperID,
+		TargetLanguage:  req.TargetLanguage,
+		ForceRegenerate: req.ForceRegenerate,
+	})
+	if err != nil {
+		if errors.Is(err, agent.ErrMissingAPIKey) {
+			response.Fail(c, http.StatusServiceUnavailable, apperrors.CodeModelFailed, "missing llm api key")
+			return
+		}
+		response.Fail(c, http.StatusBadGateway, apperrors.CodeModelFailed, err.Error())
+		return
+	}
+	response.OK(c, gin.H{"translation": translation})
+}
+
+func (h *PaperHandler) LatestTranslation(c *gin.Context) {
+	userID, ok := middleware.MustUserID(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, apperrors.CodeUnauthorized, "unauthorized")
+		return
+	}
+	if h.translationService == nil {
+		response.Fail(c, http.StatusServiceUnavailable, apperrors.CodeModelFailed, "translation service unavailable")
+		return
+	}
+	paperID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || paperID == 0 {
+		response.Fail(c, http.StatusBadRequest, apperrors.CodeBadRequest, "invalid id")
+		return
+	}
+	translation, err := h.translationService.GetLatest(c.Request.Context(), userID, paperID, c.Query("target_language"))
+	if err != nil {
+		if errors.Is(err, repository.ErrTranslationNotFound) {
+			response.OK(c, gin.H{"translation": nil})
+			return
+		}
+		if errors.Is(err, repository.ErrPaperNotFound) {
+			response.Fail(c, http.StatusNotFound, apperrors.CodeNotFound, "paper not found")
+			return
+		}
+		response.Fail(c, http.StatusInternalServerError, apperrors.CodeInternal, "get translation failed")
+		return
+	}
+	response.OK(c, gin.H{"translation": translation})
+}
+
 func (h *PaperHandler) Compare(c *gin.Context) {
 	response.OK(c, gin.H{"message": "TODO: compare endpoint"})
 }
 
 type askRequest struct {
 	Query string `json:"query" binding:"required"`
+}
+
+type translateRequest struct {
+	TargetLanguage  string `json:"target_language"`
+	ForceRegenerate bool   `json:"force_regenerate"`
 }
 
 func (h *PaperHandler) askByPrompt(c *gin.Context, instruction string) {
